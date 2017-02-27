@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-2.5.xsd
+						http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-2.5.xsd
+       					http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-2.5.xsd">
+
+	<bean id="javaQueueHelper" class="com.ailk.eaap.op2.common.JavaQueueHelper">
+		<property name="javaQueue"><ref bean="logJavaQueue"/></property>
+	</bean>
+	
+	<bean id="logJavaQueue" class="com.ailk.eaap.op2.common.JavaQueue">
+	</bean>
+	
+	<bean id="logDealServ" class="com.ailk.eaap.op2.logclient.log.service.LogDealServ">
+		<property name="queueIHelper"><ref bean="javaQueueHelper"/></property>
+		<property name="deapth"><value>${deapth}</value></property>
+	</bean>
+	
+	
+	
+	<bean id ="logThreadManagerService"  class="com.ailk.eaap.op2.logclient.send.service.LogThreadManagerServiceImpl">
+		<property name="queueIHelper"><ref bean="javaQueueHelper"/></property> 
+		<property name="logSenderService"><ref bean="logSender"></ref></property>   
+		<property name="connectionFactory"><ref bean="ActiveMQconnection"></ref></property>
+		<property name="destination"><ref bean="logDestination"></ref></property> 
+		
+	</bean>
+     
+    <!-- 配置activeMQ -->
+    <bean id="ActiveMQconnection"  class="org.apache.activemq.ActiveMQConnectionFactory"> 
+        	<property name="brokerURL">
+	            <value>${logClient.activemq.brokerURL}</value>
+	        </property>
+	        <property name="userName">
+	            <value>${logClient.activemq.userName}</value>
+	        </property>
+	        <property name="password">
+	            <value>${logClient.activemq.password}</value>
+	        </property>  
+	        <property name="useAsyncSend">
+	        	<value>true</value>
+	        </property>
+    </bean> 
+    
+    <bean id="cachingConnectionFactory"
+	  			class="org.springframework.jms.connection.CachingConnectionFactory">
+	  <!-- 目标ConnectionFactory对应真实的可以产生JMS Connection的ConnectionFactory -->  
+	  <property name="targetConnectionFactory" ref="ActiveMQconnection"></property>
+	  <!-- Session缓存数量 -->
+	  <property name="sessionCacheSize" value="100"></property>
+	 </bean>
+    
+    
+    <bean id="connectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"> 
+	    <property name="connectionFactory" ref="ActiveMQconnection"></property> 
+     	<property name="maxConnections"  value="${logClient.activemq.maxConnections}"></property>
+     	<property name="maximumActiveSessionPerConnection" 
+     				value="${logClient.activemq.maximumActiveSessionPerConnection}"></property>
+     	<property name="idleTimeout" value="${logClient.activemq.idleTimeout}"></property>
+	</bean> 
+    
+    
+    
+     <bean id="logDestination" class="org.apache.activemq.command.ActiveMQQueue">  
+        <constructor-arg index="0" >
+       		<value>${logClient.activemq.logDestination}</value>
+        </constructor-arg>  
+    </bean> 
+    
+	<bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate"> 
+	    <property name="connectionFactory" ref="cachingConnectionFactory"></property> 
+	</bean> 
+	    
+	<bean id="logSender"  class="com.ailk.eaap.op2.logclient.queue.service.impl.LogSenderService"> 
+	    <property name="jmsTemplate" ref="jmsTemplate"/> 
+	    <property name="destination"  ref="logDestination"/>
+	</bean> 
+	
+    
+    
+</beans>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-2.5.xsd
+						http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-2.5.xsd
+       					http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-2.5.xsd">
+
+
+	<bean id="logServerPropertyConfigurer" class="com.ailk.eaap.o2p.common.spring.config.EncryptPropertyPlaceholderConfigurer">
+		<property name="order" value="3" /> 
+		<property name="ignoreUnresolvablePlaceholders" value="true" />
+		<property name="locations">
+            <list>
+                <value>classpath:eaap_common.properties</value>
+            </list>
+        </property>
+	</bean>	
+
+	
+	<bean id="javaQueueHelper" class="com.ailk.eaap.op2.common.JavaQueueHelper">
+		<property name="javaQueue"><ref bean="logJavaQueue"/></property>
+	</bean>
+	
+	<bean id="logJavaQueue" class="com.ailk.eaap.op2.common.JavaQueue">
+	</bean>
+	
+	<bean id="logDealServ" class="com.ailk.eaap.op2.logclient.log.service.LogDealServ">
+		<property name="queueIHelper"><ref bean="javaQueueHelper"/></property>
+		<property name="deapth"><value>${deapth}</value></property>
+	</bean>
+	
+	<!-- <bean id="asyncBatchLog"
+		class="com.ailk.eaap.op2.logclient.send.service.AsyncBatchLog">
+		<property name="timeout">${timeout}</property>
+		<property name="address"><value>${logserverurl}</value></property>
+		<property name="queueIHelper"><ref bean="javaQueueHelper"/></property>    
+	</bean> -->
+	
+	<bean id ="logThreadManagerService"  class="com.ailk.eaap.op2.logclient.send.service.LogThreadManagerServiceImpl" init-method="start">
+		<property name="timeout"><value>${timeout}</value></property>
+		<property name="queueIHelper"><ref bean="javaQueueHelper"/></property>    
+		<property name="logSenderService"><ref bean="logSender"></ref></property> 
+		<property name="connectionFactory"><ref bean="ActiveMQconnection"></ref></property>
+		<property name="destination"><ref bean="logDestination"></ref></property> 
+	</bean>
+	
+     
+  	<bean id="httpInvokerRequestExecutor" class="org.springframework.remoting.httpinvoker.CommonsHttpInvokerRequestExecutor">    
+        <property name="httpClient" ref="httpclient" />    
+    </bean> 
+    <bean id="httpclient" class="org.apache.commons.httpclient.HttpClient">    
+        <constructor-arg>    
+            <ref bean="connectionManager"/>    
+        </constructor-arg>     
+    </bean>
+    <bean id="connectionManager" class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">    
+        <property name="params" ref="connectionManagerParams"/>    
+    </bean>
+    <bean id="connectionManagerParams" class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">  
+        <!--  设置 连接超时时间(毫秒),默认为0不使用   -->
+        <property name="connectionTimeout" value="3000"/> 
+         <!--  设置默认的连接数量最大允许对一个给定的主机配置   -->
+        <property name="maxTotalConnections" value="100"/>  
+          <!-- 允许的最大连接数       -->
+        <property name="defaultMaxConnectionsPerHost" value="100"/>    
+    </bean>  
+    
+    
+    <!-- 配置activeMQ -->
+       <bean id="ActiveMQconnection"  class="org.apache.activemq.ActiveMQConnectionFactory"> 
+        	<property name="brokerURL">
+	            <value>${logClient.activemq.brokerURL}</value>
+	        </property>
+	        <property name="userName">
+	            <value>${logClient.activemq.userName}</value>
+	        </property>
+	        <property name="password">
+	            <value>${logClient.activemq.password}</value>
+	        </property>  
+	        <property name="useAsyncSend">
+	        	<value>true</value>
+	        </property>
+    </bean> 
+    
+    <bean id="cachingConnectionFactory"
+	  			class="org.springframework.jms.connection.CachingConnectionFactory">
+	  <!-- 目标ConnectionFactory对应真实的可以产生JMS Connection的ConnectionFactory -->  
+	  <property name="targetConnectionFactory" ref="ActiveMQconnection"></property>
+	  <!-- Session缓存数量 -->
+	  <property name="sessionCacheSize" value="100"></property>
+	 </bean>
+    <bean id="connectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory" destroy-method="stop"> 
+	    <property name="connectionFactory" ref="ActiveMQconnection"></property> 
+     	<property name="maxConnections"  value="${logClient.activemq.maxConnections}"></property>
+     	<property name="maximumActiveSessionPerConnection" 
+     				value="${logClient.activemq.maximumActiveSessionPerConnection}"></property>
+     	<property name="idleTimeout" value="${logClient.activemq.idleTimeout}"></property>
+     	
+	</bean> 
+    
+     <bean id="logDestination" class="org.apache.activemq.command.ActiveMQQueue">  
+        <constructor-arg index="0" >
+       		<value>${logClient.activemq.logDestination}</value>
+        </constructor-arg>  
+    </bean> 
+    
+	<bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate"> 
+	    <property name="connectionFactory" ref="cachingConnectionFactory"></property> 
+	     <!-- 使 deliveryMode, priority, timeToLive设置生效-->
+        <property name="explicitQosEnabled" value="true" />
+        <!-- 设置NON_PERSISTENT模式, 默认为PERSISTENT -->
+        <property name="deliveryPersistent" value="true" />
+        <!-- 设置优先级, 默认为4 -->
+        <property name="priority" value="9" />
+        <property name="deliveryMode" value="1" />  
+	</bean> 
+	    
+	<bean id="logSender"  class="com.ailk.eaap.op2.logclient.queue.service.impl.LogSenderService"> 
+	    <property name="jmsTemplate" ref="jmsTemplate"/> 
+	    <property name="destination"  ref="logDestination"/>
+	</bean> 
+	
+	
+    
+    
+</beans>
